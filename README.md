@@ -1,5 +1,72 @@
 # RL Games: High performance RL library  
 
+## TYLER ADDITIONS (2023-12-28): Call Stack in Isaacgym
+
+### Params:
+model: continuous_a2c_logstd
+network: actor_critic
+
+### Train.py: runner.run()
+
+### torch_runner.py: run_train() => A2CAgent().train()
+
+### a2c_continuous.py A2CAgent()
+
+* (derived class implements train_actor_critic() and calc_gradients() to get losses)
+* self.model = self.network.build(build_config)
+
+### a2c_common.py ContinuousA2CBase() (train() => train_epoch())
+
+* train()
+  * train_epoch() and log and save
+* train_epoch()
+  * batch_dict = play_steps(), prepare_dataset(batch_dict)
+  * for epoch in epochs, for i in dataset: train_actor_critic() to get losses, store and return
+* play_steps()
+  * for i in horizon_length:
+    * get_action_values(self.obs) (res_dict = self.model(input_dict))
+  * obs, rew, dones = env_step(action)
+  * reward shape
+  * experience_buffer
+  * Compute discounted values and returns
+  * Update batch_dict with these
+
+### a2c_common.py A2CBase() (load_networks())
+
+* builder = model_builder.ModelBuilder()
+* self.config['network'] = builder.load(params)
+
+### model_builder.py ModelBuilder(), NetworkBuilder()
+
+* ModelBuilder: continuous_a2c_logstd => models.ModelA2CContinuousLogStd
+* NetworkBuilder: actor_critic => network_builder.A2CBuilder
+
+### models.py ModelA2CContinuousLogStd (BaseModel)
+
+* BaseModel:
+  * build() => creates a self.Network using given model_class, obs_shape, normalize params
+* model_class=a2c
+* self.Network
+  * Given a2c_network
+  * forward function:
+    * norm(obs)
+    * logits, value, _ = self.a2c_network(input)
+    * Give logits, entropy and neglog if needed
+  * BaseModelNetwork
+    * normalize with running mean
+
+### network_builder.py A2CBuilder
+
+* Base class: NetworkBuilder:
+  * self.BaseNetwork(nn.Module)
+    * activations_factory and init_factor
+    * build functions
+* self.Network(BaseNetwork)
+  * Create all network modules here
+  * forward
+    * return mu, sigma, value, states
+
+
 ## Discord Channel Link 
 * https://discord.gg/hnYRq7DsQh
 
