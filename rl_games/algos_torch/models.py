@@ -54,6 +54,10 @@ class BaseModelNetwork(nn.Module):
     def denorm_value(self, value):
         with torch.no_grad():
             return self.value_mean_std(value, denorm=True) if self.normalize_value else value
+        
+    
+    def get_aux_loss(self):
+        return None
 
 class ModelA2C(BaseModel):
     def __init__(self, network):
@@ -64,7 +68,10 @@ class ModelA2C(BaseModel):
         def __init__(self, a2c_network, **kwargs):
             BaseModelNetwork.__init__(self,**kwargs)
             self.a2c_network = a2c_network
-
+        
+        def get_aux_loss(self):
+            return self.a2c_network.get_aux_loss()
+        
         def is_rnn(self):
             return self.a2c_network.is_rnn()
         
@@ -121,6 +128,9 @@ class ModelA2CMultiDiscrete(BaseModel):
             BaseModelNetwork.__init__(self, **kwargs)
             self.a2c_network = a2c_network
 
+        def get_aux_loss(self):
+            return self.a2c_network.get_aux_loss()
+        
         def is_rnn(self):
             return self.a2c_network.is_rnn()
         
@@ -144,7 +154,8 @@ class ModelA2CMultiDiscrete(BaseModel):
             if is_train:
                 if action_masks is None:
                     categorical = [Categorical(logits=logit) for logit in logits]
-                else:   
+                else:
+                    action_masks = np.split(action_masks,len(logits), axis=1)
                     categorical = [CategoricalMasked(logits=logit, masks=mask) for logit, mask in zip(logits, action_masks)]
                 prev_actions = torch.split(prev_actions, 1, dim=-1)
                 prev_neglogp = [-c.log_prob(a.squeeze()) for c,a in zip(categorical, prev_actions)]
@@ -162,7 +173,8 @@ class ModelA2CMultiDiscrete(BaseModel):
             else:
                 if action_masks is None:
                     categorical = [Categorical(logits=logit) for logit in logits]
-                else:   
+                else:
+                    action_masks = np.split(action_masks, len(logits), axis=1)
                     categorical = [CategoricalMasked(logits=logit, masks=mask) for logit, mask in zip(logits, action_masks)]                
                 
                 selected_action = [c.sample().long() for c in categorical]
@@ -188,6 +200,9 @@ class ModelA2CContinuous(BaseModel):
             BaseModelNetwork.__init__(self, **kwargs)
             self.a2c_network = a2c_network
 
+        def get_aux_loss(self):
+            return self.a2c_network.get_aux_loss()
+        
         def is_rnn(self):
             return self.a2c_network.is_rnn()
             
@@ -246,6 +261,9 @@ class ModelA2CContinuousLogStd(BaseModel):
             BaseModelNetwork.__init__(self, **kwargs)
             self.a2c_network = a2c_network
 
+        def get_aux_loss(self):
+            return self.a2c_network.get_aux_loss()
+        
         def is_rnn(self):
             return self.a2c_network.is_rnn()
 
@@ -303,6 +321,9 @@ class ModelCentralValue(BaseModel):
             BaseModelNetwork.__init__(self, **kwargs)
             self.a2c_network = a2c_network
 
+        def get_aux_loss(self):
+            return self.a2c_network.get_aux_loss()
+
         def is_rnn(self):
             return self.a2c_network.is_rnn()
 
@@ -341,6 +362,9 @@ class ModelSACContinuous(BaseModel):
         def __init__(self, sac_network,**kwargs):
             BaseModelNetwork.__init__(self,**kwargs)
             self.sac_network = sac_network
+
+        def get_aux_loss(self):
+            return self.sac_network.get_aux_loss()
 
         def critic(self, obs, action):
             return self.sac_network.critic(obs, action)

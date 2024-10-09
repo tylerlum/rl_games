@@ -13,8 +13,19 @@ import numpy as np
 
 
 class DiscreteA2CAgent(a2c_common.DiscreteA2CBase):
+    """Discrete PPO Agent
 
+    The DiscreteA2CAgent class inerits from the discrete asymmetric actor-critic class and makes modifications for PPO.
+
+    """
     def __init__(self, base_name, params):
+        """Initialise the algorithm with passed params
+
+        Args:
+            base_name (:obj:`str`): Name passed on to the observer and used for checkpoints etc.
+            params (:obj `dict`): Algorithm parameters
+
+        """
         a2c_common.DiscreteA2CBase.__init__(self, base_name, params)
         obs_shape = self.obs_shape
         
@@ -95,8 +106,6 @@ class DiscreteA2CAgent(a2c_common.DiscreteA2CBase):
                 value = self.get_central_value(input_dict)
                 res_dict['values'] = value
 
-        if self.is_multi_discrete:
-            action_masks = torch.cat(action_masks, dim=-1)
         res_dict['action_masks'] = action_masks
         return res_dict
 
@@ -110,6 +119,14 @@ class DiscreteA2CAgent(a2c_common.DiscreteA2CBase):
         return self.train_result
 
     def calc_gradients(self, input_dict):
+        """Compute gradients needed to step the networks of the algorithm.
+
+        Core algo logic is defined here
+
+        Args:
+            input_dict (:obj:`dict`): Algo inputs as a dict.
+
+        """
         value_preds_batch = input_dict['old_values']
         old_action_log_probs_batch = input_dict['old_logp_actions']
         advantage = input_dict['advantages']
@@ -153,7 +170,16 @@ class DiscreteA2CAgent(a2c_common.DiscreteA2CBase):
             losses, sum_mask = torch_ext.apply_masks([a_loss.unsqueeze(1), c_loss, entropy.unsqueeze(1)], rnn_masks)
             a_loss, c_loss, entropy = losses[0], losses[1], losses[2]
             loss = a_loss + 0.5 *c_loss * self.critic_coef - entropy * self.entropy_coef
-
+            aux_loss = self.model.get_aux_loss()
+            self.aux_loss_dict = {}
+            if aux_loss is not None:
+                for k, v in aux_loss.items():
+                    loss += v
+                    if k in self.aux_loss_dict:
+                        self.aux_loss_dict[k] = v.detach()
+                    else:
+                        self.aux_loss_dict[k] = [v.detach()]
+                    
             if self.multi_gpu:
                 self.optimizer.zero_grad()
             else:
