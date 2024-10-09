@@ -233,25 +233,44 @@ class A2CBuilder(NetworkBuilder):
 
             mlp_input_size = cnn_output_size
             if len(self.units) == 0:
-                out_size = cnn_output_size
+                mlp_output_size = cnn_output_size
             else:
-                out_size = self.units[-1]
+                mlp_output_size = self.units[-1]
 
+            # rnn concat_input: rnn's new input will be its [original input, output from previous stage (if exists)]
+            # rnn concat_output: rnn's new output will be its [original output, output from the previous stage (if exists)]
             if self.has_rnn:
                 if not self.is_rnn_before_mlp:
-                    rnn_in_size = out_size
+                    # mlp -> rnn
+
+                    # rnn(mlp(x))
+                    rnn_in_size = mlp_output_size
+
                     if self.rnn_concat_input:
+                        # rnn([mlp(x), x])
                         rnn_in_size += cnn_output_size
 
+                    # out = rnn(...)
                     out_size = self.rnn_units
+
                     if self.rnn_concat_output:
-                        out_size += cnn_output_size
+                        # out = rnn(...) + mlp(x)
+                        out_size += mlp_output_size
                 else:
+                    # rnn -> mlp
+
+                    # rnn(x)
                     rnn_in_size = cnn_output_size
 
+                    # mlp(rnn(x))
                     mlp_input_size = self.rnn_units
+
                     if self.rnn_concat_output:
+                        # mlp(rnn(x) + x)
                         mlp_input_size += cnn_output_size
+
+                    # out = mlp(...)
+                    out_size = mlp_output_size
 
                 if self.separate:
                     self.a_rnn = self._build_rnn(self.rnn_name, rnn_in_size, self.rnn_units, self.rnn_layers)
@@ -263,6 +282,8 @@ class A2CBuilder(NetworkBuilder):
                     self.rnn = self._build_rnn(self.rnn_name, rnn_in_size, self.rnn_units, self.rnn_layers)
                     if self.rnn_ln:
                         self.layer_norm = torch.nn.LayerNorm(self.rnn_units)
+            else:
+                out_size = mlp_output_size
 
             mlp_args = {
                 'input_size' : mlp_input_size,
@@ -347,10 +368,17 @@ class A2CBuilder(NetworkBuilder):
                     a_cnn_out = a_out
                     c_cnn_out = c_out
                     if not self.is_rnn_before_mlp:
+                        # mlp -> rnn
+
+                        # rnn(mlp(x))
                         a_out = self.actor_mlp(a_cnn_out)
                         c_out = self.critic_mlp(c_cnn_out)
 
+                        a_mlp_out = a_out
+                        c_mlp_out = c_out
+
                         if self.rnn_concat_input:
+                            # rnn([mlp(x), x])
                             a_out = torch.cat([a_out, a_cnn_out], dim=1)
                             c_out = torch.cat([c_out, c_cnn_out], dim=1)
 
@@ -388,13 +416,21 @@ class A2CBuilder(NetworkBuilder):
                         c_states = (c_states,)
                     states = a_states + c_states
 
-                    if self.rnn_concat_output:
+                    if self.rnn_concat_output and not self.is_rnn_before_mlp:
+                        # mlp -> rnn
+
+                        # out = rnn(...) + mlp(x)
+                        a_out = torch.cat([a_out, a_mlp_out], dim=1)
+                        c_out = torch.cat([c_out, c_mlp_out], dim=1)
+                    elif self.rnn_concat_output and self.is_rnn_before_mlp:
+                        # rnn -> mlp
+
+                        # out = mlp(rnn(x) + x)
                         a_out = torch.cat([a_out, a_cnn_out], dim=1)
                         c_out = torch.cat([c_out, c_cnn_out], dim=1)
-
-                    if self.is_rnn_before_mlp:
                         a_out = self.actor_mlp(a_out)
                         c_out = self.critic_mlp(c_out)
+
                 else:
                     a_out = self.actor_mlp(a_out)
                     c_out = self.critic_mlp(c_out)
@@ -427,8 +463,14 @@ class A2CBuilder(NetworkBuilder):
 
                     cnn_out = out
                     if not self.is_rnn_before_mlp:
+                        # mlp -> rnn
+
+                        # rnn(mlp(x))
                         out = self.actor_mlp(out)
+                        mlp_out = out
+
                         if self.rnn_concat_input:
+                            # rnn([mlp(x), x])
                             out = torch.cat([out, cnn_out], dim=1)
 
                     batch_size = out.size()[0]
@@ -448,9 +490,16 @@ class A2CBuilder(NetworkBuilder):
 
                     if self.rnn_ln:
                         out = self.layer_norm(out)
-                    if self.rnn_concat_output:
+                    if self.rnn_concat_output and not self.is_rnn_before_mlp:
+                        # mlp -> rnn
+
+                        # out = rnn(...) + mlp(x)
+                        out = torch.cat([out, mlp_out], dim=1)
+                    elif self.rnn_concat_output and self.is_rnn_before_mlp:
+                        # rnn -> mlp
+
+                        # out = mlp(rnn(x) + x)
                         out = torch.cat([out, cnn_out], dim=1)
-                    if self.is_rnn_before_mlp:
                         out = self.actor_mlp(out)
                     if type(states) is not tuple:
                         states = (states,)
