@@ -501,6 +501,11 @@ class A2CBuilder(NetworkBuilder):
                         # out = mlp(rnn(x) + x)
                         out = torch.cat([out, cnn_out], dim=1)
                         out = self.actor_mlp(out)
+                    elif not self.rnn_concat_output and self.is_rnn_before_mlp:
+                        # rnn -> mlp
+
+                        # out = mlp(rnn(x))
+                        out = self.actor_mlp(out)
                     if type(states) is not tuple:
                         states = (states,)
                 else:
